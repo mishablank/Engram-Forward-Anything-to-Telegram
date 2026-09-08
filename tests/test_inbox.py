@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from engram import inbox as inbox_module
 from engram.inbox import (
     clear_pending,
     find_pending,
@@ -48,6 +49,18 @@ def test_find_pending_ignores_attachments_and_dotfolders(tmp_path: Path) -> None
     _write(tmp_path / "AI" / "z.md", "---\nreview: pending\n---\n\nz\n")
     pending = find_pending(tmp_path)
     assert [p.name for p in pending] == ["z.md"]
+
+
+def test_find_pending_skips_unavailable_icloud_file(tmp_path: Path, monkeypatch) -> None:
+    available = tmp_path / "AI" / "available.md"
+    unavailable = tmp_path / "AI" / "unavailable.md"
+    _write(available, "---\nreview: pending\n---\n\navailable\n")
+    _write(unavailable, "---\nreview: pending\n---\n\nunavailable\n")
+    monkeypatch.setattr(
+        inbox_module, "is_available", lambda path: path != unavailable
+    )
+
+    assert find_pending(tmp_path) == [available]
 
 
 def test_clear_pending_removes_field(tmp_path: Path) -> None:

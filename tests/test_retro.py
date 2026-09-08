@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from engram import retro as retro_module
 from engram.embeddings import NearestHit
 from engram.retro import merge_duplicate_notes
 
@@ -86,3 +87,23 @@ def test_no_duplicate_is_noop(tmp_path: Path) -> None:
 
     assert merge_duplicate_notes(tmp_path, idx, MagicMock(), [a]) == 0
     assert a.exists()
+
+
+def test_merge_skips_unavailable_icloud_file(tmp_path: Path, monkeypatch) -> None:
+    available = tmp_path / "AI" / "available.md"
+    unavailable = tmp_path / "AI" / "unavailable.md"
+    available.parent.mkdir()
+    available.write_text("---\nc: x\n---\n# Available\nbody\n", encoding="utf-8")
+    unavailable.write_text(
+        "---\nc: y\n---\n# Unavailable\nbody\n", encoding="utf-8"
+    )
+    index = FakeIndex({"available": [(unavailable, 0.95)]})
+    monkeypatch.setattr(
+        retro_module, "is_available", lambda path: path != unavailable
+    )
+
+    assert merge_duplicate_notes(
+        tmp_path, index, MagicMock(), [available, unavailable]
+    ) == 0
+    assert available.exists()
+    assert unavailable.exists()

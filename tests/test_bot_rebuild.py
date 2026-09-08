@@ -104,3 +104,16 @@ async def test_rebuild_runs_merge_branch_when_index_enabled(tmp_path, monkeypatc
     last = update.effective_chat.send_message.call_args.args[0]
     assert "Rebuild done" in last
     assert "merged 0" in last.lower()  # merge phase ran (not skipped)
+
+
+def test_vault_note_paths_skips_unavailable_icloud_file(tmp_path, monkeypatch):
+    available = tmp_path / "AI" / "available.md"
+    unavailable = tmp_path / "AI" / "unavailable.md"
+    available.parent.mkdir()
+    available.write_text("available", encoding="utf-8")
+    unavailable.write_text("unavailable", encoding="utf-8")
+    monkeypatch.setattr(
+        bot_module, "is_available", lambda path: path != unavailable
+    )
+
+    assert bot_module._vault_note_paths(tmp_path) == [available]

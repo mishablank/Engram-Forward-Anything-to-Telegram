@@ -5,7 +5,7 @@ import re
 import shutil
 from pathlib import Path
 
-from .vault import FRONTMATTER_RE
+from .vault import FRONTMATTER_RE, is_available
 
 log = logging.getLogger(__name__)
 
@@ -14,6 +14,9 @@ IGNORE_DIRS = ("attachments",)
 
 
 def _read(path: Path) -> str:
+    if not is_available(path):
+        log.warning("Skipping unavailable iCloud file: %s", path)
+        return ""
     try:
         return path.read_text(encoding="utf-8")
     except OSError:
@@ -37,9 +40,15 @@ def find_pending(base_dir: Path) -> list[Path]:
             continue
         if rel_parts and rel_parts[0].startswith("."):
             continue
+        if not is_available(path):
+            log.warning("Skipping unavailable iCloud file: %s", path)
+            continue
         text = _read(path)
         if is_pending(text):
-            pending.append((path.stat().st_mtime, path))
+            try:
+                pending.append((path.stat().st_mtime, path))
+            except OSError:
+                continue
     pending.sort(key=lambda x: x[0])
     return [p for _, p in pending]
 

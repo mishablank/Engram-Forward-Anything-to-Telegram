@@ -42,7 +42,7 @@ from .note_writer import (
 from .pdf import extract_pdf_text
 from .relinker import relink_note
 from .retro import merge_duplicate_notes
-from .vault import VaultIndex, load_note_body, scan_vault, search_vault
+from .vault import VaultIndex, is_available, load_note_body, scan_vault, search_vault
 from .vision import ocr_image
 from .whisper import transcribe
 
@@ -1239,7 +1239,7 @@ def make_handlers(state: BotState):
                 f"Folder not found: {target_arg}"
             )
             return
-        notes = [p for p in folder_dir.glob("*.md")]
+        notes = [p for p in folder_dir.glob("*.md") if is_available(p)]
         if not notes:
             await update.effective_chat.send_message(
                 f"No notes in {target_arg}."
@@ -1318,6 +1318,9 @@ def _vault_note_paths(base_dir: Path) -> list[Path]:
     out: list[Path] = []
     for p in base_dir.rglob("*.md"):
         if any(part in skip for part in p.relative_to(base_dir).parts):
+            continue
+        if not is_available(p):
+            log.warning("Skipping unavailable iCloud file: %s", p)
             continue
         out.append(p)
     # Deterministic order so rebuilds and their git diffs are reproducible.

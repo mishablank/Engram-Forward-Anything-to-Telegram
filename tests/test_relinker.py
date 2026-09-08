@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from engram import relinker as relinker_module
 from engram.embeddings import SemanticIndex
 from engram.relinker import (
     format_related_line,
@@ -79,6 +80,15 @@ def test_relink_skips_when_index_disabled(tmp_path: Path) -> None:
     changed, titles = relink_note(target, idx)
     assert not changed
     assert titles == []
+
+
+def test_relink_skips_unavailable_icloud_file(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "AI" / "target.md"
+    _write(target, "body\n")
+    index = _setup_index(tmp_path)
+    monkeypatch.setattr(relinker_module, "is_available", lambda _: False)
+
+    assert relink_note(target, index) == (False, [])
 
 
 def test_relink_preserves_trailing_tags_line(tmp_path: Path) -> None:

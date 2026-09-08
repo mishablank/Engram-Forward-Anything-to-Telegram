@@ -9,7 +9,7 @@ from .dedupe import find_semantic_duplicate
 from .embeddings import SemanticIndex
 from .merger import merge_note
 from .note_writer import is_safe_merge
-from .vault import load_note_body
+from .vault import is_available, load_note_body
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def merge_duplicate_notes(
     deleted: set[Path] = set()
     merges = 0
     for note in paths:
-        if note in deleted or not note.exists():
+        if note in deleted or not note.exists() or not is_available(note):
             continue
         body = load_note_body(note)
         if not body.strip():
@@ -45,7 +45,12 @@ def merge_duplicate_notes(
             body,
             skip_paths=deleted | {note},
         )
-        if target is None or target in deleted or not target.exists():
+        if (
+            target is None
+            or target in deleted
+            or not target.exists()
+            or not is_available(target)
+        ):
             continue
         # Keep the older note as canonical so its creation date and title
         # survive; merge the newer one into it and delete the newer.
@@ -53,6 +58,8 @@ def merge_duplicate_notes(
             canonical, victim = note, target
         else:
             canonical, victim = target, note
+        if not is_available(canonical) or not is_available(victim):
+            continue
         existing = canonical.read_text(encoding="utf-8")
         merged = merge_note(client, existing, load_note_body(victim))
         if not is_safe_merge(existing, merged):

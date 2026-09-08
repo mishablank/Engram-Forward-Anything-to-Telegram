@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
 from engram.embeddings import SemanticIndex, _surface_text
+from engram.vault import scan_vault, search_vault
 
 
 class StubEmbedder:
@@ -32,6 +34,53 @@ class StubEmbedder:
 def _write(p: Path, body: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(body, encoding="utf-8")
+
+
+def test_iter_vault_notes_skips_dataless_files(tmp_path: Path, monkeypatch) -> None:
+    available = tmp_path / "AI" / "available.md"
+    dataless = tmp_path / "AI" / "dataless.md"
+    _write(available, "available\n")
+    _write(dataless, "unavailable\n")
+    real_stat = Path.stat
+
+    def fake_stat(path: Path, *args, **kwargs):
+        result = real_stat(path, *args, **kwargs)
+        flags = 0x40000000 if path == dataless else 0
+        return SimpleNamespace(
+            st_flags=flags,
+            st_mode=result.st_mode,
+            st_mtime=result.st_mtime,
+        )
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    idx = SemanticIndex(tmp_path, None)
+
+    assert list(idx._iter_vault_notes()) == [available]
+    assert scan_vault(tmp_path).titles == ["available"]
+    assert [hit.title for hit in search_vault(tmp_path, "available")] == ["available"]
+
+
+def test_vault_indexes_skip_stat_errors(tmp_path: Path, monkeypatch) -> None:
+    available = tmp_path / "AI" / "available.md"
+    unavailable = tmp_path / "AI" / "unavailable.md"
+    _write(available, "available\n")
+    _write(unavailable, "unavailable\n")
+    real_stat = Path.stat
+
+    def fake_stat(path: Path, *args, **kwargs):
+        if path == unavailable:
+            raise OSError("iCloud file unavailable")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    embedder = StubEmbedder()
+    idx = SemanticIndex(tmp_path, embedder)
+    idx.refresh()
+
+    assert list(idx._iter_vault_notes()) == [available]
+    assert scan_vault(tmp_path).titles == ["available"]
+    assert [hit.title for hit in search_vault(tmp_path, "available")] == ["available"]
+    assert embedder.calls == [["available\navailable"]]
 
 
 def test_surface_text_uses_title_tags_first_paragraphs(tmp_path: Path) -> None:
