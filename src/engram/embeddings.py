@@ -15,6 +15,7 @@ from .vault import (
     SNIPPET_WINDOW,
     SearchHit,
     _extract_tags,
+    is_available,
     _strip_frontmatter,
     search_vault,
 )
@@ -155,6 +156,9 @@ class SemanticIndex:
                 continue
             if rel_parts and rel_parts[0].startswith("."):
                 # Skip hidden directories like our own .tg-obsidian-bot/
+                continue
+            if not is_available(path):
+                log.warning("Skipping unavailable iCloud file: %s", path)
                 continue
             yield path
 

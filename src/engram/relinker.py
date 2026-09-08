@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from .embeddings import SemanticIndex
+from .vault import is_available
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def relink_note(
     line, or when the note isn't in the semantic index, or when no candidates clear
     `min_score`.
     """
-    if not semantic_index.enabled:
+    if not semantic_index.enabled or not is_available(path):
         return False, []
     hits = semantic_index.nearest_for_path(path, k=k)
     new_titles = [h.path.stem for h in hits if h.score >= min_score]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 
 TAG_RE = re.compile(r"(?:^|\s)#([A-Za-z][\w/-]*)")
@@ -13,6 +14,9 @@ NORM_PUNCT = re.compile(r"[^\w\s]")
 SNIPPET_WINDOW = 80
 DEFAULT_SEARCH_K = 10
 MAX_BODY_CHARS_FOR_RAG = 4000
+SF_DATALESS = 0x40000000
+
+log = logging.getLogger("engram")
 
 
 @dataclass
@@ -41,6 +45,19 @@ class VaultIndex:
 def _normalize_title(title: str) -> str:
     title = NORM_PUNCT.sub(" ", title.lower())
     return re.sub(r"\s+", " ", title).strip()
+
+
+def _is_dataless(stat_result: object) -> bool:
+    """Whether macOS has evicted this file's contents from local storage."""
+    return bool(getattr(stat_result, "st_flags", 0) & SF_DATALESS)
+
+
+def is_available(path: Path) -> bool:
+    """Whether a note can be read without asking iCloud to download it."""
+    try:
+        return not _is_dataless(path.stat())
+    except OSError:
+        return False
 
 
 def _extract_frontmatter_fields(text: str) -> tuple[set[str], set[str]]:
@@ -129,9 +146,20 @@ def scan_vault(root: Path, ignore_dirs: tuple[str, ...] = ("attachments",)) -> V
     url_to_path: dict[str, Path] = {}
     norm_title_to_path: dict[str, Path] = {}
 
-    for path in sorted(root.rglob("*.md"), key=lambda p: p.stat().st_mtime):
+    paths: list[tuple[float, Path]] = []
+    for path in root.rglob("*.md"):
         if any(part in ignore_dirs for part in path.relative_to(root).parts):
             continue
+        try:
+            stat_result = path.stat()
+            if _is_dataless(stat_result):
+                log.warning("Skipping unavailable iCloud file: %s", path)
+                continue
+        except OSError:
+            continue
+        paths.append((stat_result.st_mtime, path))
+
+    for _, path in sorted(paths):
         titles.append(path.stem)
         norm_title_to_path[_normalize_title(path.stem)] = path
         try:
@@ -192,6 +220,12 @@ def search_vault(
         if any(part in ignore_dirs for part in rel_parts):
             continue
         try:
+            if _is_dataless(path.stat()):
+                log.warning("Skipping unavailable iCloud file: %s", path)
+                continue
+        except OSError:
+            continue
+        try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
@@ -224,6 +258,9 @@ def search_vault(
 
 
 def load_note_body(path: Path, max_chars: int = MAX_BODY_CHARS_FOR_RAG) -> str:
+    if not is_available(path):
+        log.warning("Skipping unavailable iCloud file: %s", path)
+        return ""
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:

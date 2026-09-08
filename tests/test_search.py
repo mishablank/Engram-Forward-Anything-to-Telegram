@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from engram import vault as vault_module
 from engram.vault import load_note_body, search_vault
 
 
@@ -57,3 +58,11 @@ def test_load_note_body_truncates(tmp_path: Path) -> None:
     body = load_note_body(p, max_chars=500)
     assert "[truncated]" in body
     assert len(body) <= 600
+
+
+def test_load_note_body_skips_unavailable_icloud_file(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "unavailable.md"
+    _write(path, "this must not be read")
+    monkeypatch.setattr(vault_module, "is_available", lambda _: False)
+
+    assert load_note_body(path) == ""
